@@ -10,10 +10,9 @@ env/
 venv/
 
 data/
-model/
+/models/
 img/
 reports/
 
 /.DS_Store
-
 
