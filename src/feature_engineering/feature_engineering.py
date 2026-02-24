@@ -3,6 +3,8 @@ import numpy as np
 from itertools import combinations
 from data_processor import DataProcessor
 from datetime import datetime
+from sklearn.linear_model import LinearRegression
+
 class FeatureEngineering:
     def __init__(self,dp:DataProcessor):
         self.dp = dp
@@ -341,7 +343,116 @@ class PhysicsBasedFeatures:
             'Physics_Feed_Pressure': P_feed_pred,
             'Physics_Conc_Pressure': P_conc_pred
         })
+
+
+    def add_all_physics_features(self, 
+                                 feed_temp_col='FeedTemperature',
+                                 feed_cond_col='FeedConductivity',
+                                 feed_press_col='FeedPressure',
+                                 diff_press_col='DifferentialPressure',
+                                 perm_press_col='PermeatePressure',
+                                 perm_flow_col='PermeateFlow',
+                                 perm_cond_col='PermeateConductivity'):
+        """
+        Generates ALL physics targets (Flow, Conductivity, Pressure) and their Residuals.
+        Updates self.df directly.
+        """
+        print("--- Generating Physics Models for All Parameters ---")
+
+        # 1. Gather Vectors (Numpy for speed)
+        # We extract all necessary columns at once to keep the code clean
+        T = self.df[feed_temp_col].values
+        Cond_Feed = self.df[feed_cond_col].values
+        P_feed = self.df[feed_press_col].values
+        dP = self.df[diff_press_col].values
+        P_perm = self.df[perm_press_col].values
+        Q_perm = self.df[perm_flow_col].values
+        Cond_Perm = self.df[perm_cond_col].values
+
+        # 2. Global Constants
+        # Temperature Correction Factor (ASTM D4516)
+        # Standard logic: exp(0.027 * (T - 25))
+        TCF = np.exp(0.027 * (T - 25.0))
+        self.df['TCF'] = TCF
         
+        # Osmotic Pressure Estimation
+        # Approx: 0.0004 bar per uS/cm
+        Pi_Feed = 0.0004 * Cond_Feed
+        self.df['Osmotic_Pressure'] = Pi_Feed
+
+        # ---------------------------------------------------------
+        # 3. PERMEATE FLOW MODEL (Solution-Diffusion)
+        # ---------------------------------------------------------
+        # P_avg = FeedPress - (DP / 2)
+        P_avg = P_feed - (dP / 2.0)
+        
+        # Net Driving Pressure (NDP) = P_avg - P_perm - Osmotic
+        NDP = P_avg - P_perm - Pi_Feed
+        self.df['P_avg'] = P_avg
+        self.df['NDP'] = NDP
+        
+        # Calibrate A (Water Permeability) using first 500 rows
+        # A = Q / (TCF * NDP)
+        # Filter for valid NDP > 1.0 to avoid noise
+        valid_calib = (NDP[:500] > 1.0)
+        
+        numerator = Q_perm[:500][valid_calib]
+        denominator = TCF[:500][valid_calib] * NDP[:500][valid_calib]
+        
+        A_coeff = np.median(numerator / denominator)
+        print(f"Calibrated Water Permeability (A): {A_coeff:.4f}")
+        
+        # Calculate Physics Flow
+        Q_phys = A_coeff * TCF * NDP
+        self.df['Physics_PermeateFlow'] = Q_phys
+        self.df['Residual_PermeateFlow'] = Q_perm - Q_phys
+
+        # ---------------------------------------------------------
+        # 4. PERMEATE CONDUCTIVITY MODEL (Diffusion)
+        # ---------------------------------------------------------
+        # Salt Flux = Q_perm * C_perm
+        # Driving Conc = C_feed * TCF
+        Salt_Flux_Actual = Q_perm[:500] * Cond_Perm[:500]
+        Driving_Conc = Cond_Feed[:500] * TCF[:500]
+        
+        # Calibrate B (Salt Permeability)
+        # B = Salt_Flux / Driving_Conc
+        # Avoid division by zero
+        valid_salt = Driving_Conc > 0.1
+        B_coeff = np.median(Salt_Flux_Actual[valid_salt] / Driving_Conc[valid_salt])
+        print(f"Calibrated Salt Permeability (B): {B_coeff:.4f}")
+        
+        # Calculate Physics Conductivity
+        # C_phys = (B * C_feed * TCF) / Q_phys
+        # Use a safe flow (replace 0 with 0.1) to avoid Inf
+        Q_phys_safe = np.where(Q_phys == 0, 0.1, Q_phys)
+        
+        Salt_Flux_Phys = B_coeff * Cond_Feed * TCF
+        Cond_Phys = Salt_Flux_Phys / Q_phys_safe
+        
+        self.df['Physics_PermeateConductivity'] = Cond_Phys
+        self.df['Residual_PermeateConductivity'] = Cond_Perm - Cond_Phys
+
+        # ---------------------------------------------------------
+        # 5. PERMEATE PRESSURE MODEL (Hydraulic)
+        # ---------------------------------------------------------
+        # Simple Linear Regression: P_perm ~ k * Q_perm + c
+        # Calibrate on first 500 rows
+        from sklearn.linear_model import LinearRegression
+        
+        X_calib = Q_perm[:500].reshape(-1, 1)
+        y_calib = P_perm[:500]
+        
+        reg = LinearRegression()
+        reg.fit(X_calib, y_calib)
+        
+        # Predict
+        P_phys = reg.predict(Q_perm.reshape(-1, 1))
+        
+        self.df['Physics_PermeatePressure'] = P_phys
+        self.df['Residual_PermeatePressure'] = P_perm - P_phys
+        
+        return self.df
         
 
 
