@@ -1,1 +1,1 @@
-from .enhanced_lstm import lstm_model, model_analysis
+from .enhanced_lstm import EnhancedLSTM, lstm_hybrid_model

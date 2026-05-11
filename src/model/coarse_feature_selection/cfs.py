@@ -1,114 +1,193 @@
-# import pandas as pd
-# import numpy as np
-# from sklearn.model_selection import train_test_split
-# from sklearn.ensemble import RandomForestRegressor
-# import shap
-# import torch
-# import torch.nn as nn
-# from torch.utils.data import DataLoader, Dataset
-# from sklearn.preprocessing import StandardScaler
-# from tqdm import tqdm
-# import matplotlib.pyplot as plt
-# from data_processor import DataProcessor
+"""
+Feature Selection Model using Random Forest Regressor and SHAP
+"""
 
-# def random_forest_regressor(dp: DataProcessor, target_colums, features, plant_name,test_size=0.2, random_state=42, top_num = 5):
-    
-#     if target_colums not in dp.outputs_df.columns:
-#         raise ValueError(f"Target column '{target_colums}' not found in dp.outputs_df")
-#     # 1. 数据拆分
-#     # Remove cycle metadata (cycle_id, cycle_time) since these should not be inputs for RF
-#     features = [f for f in features if f not in ['cycle_id', 'cycle_time']]
-#     # 选出前10000个数据
-#     selected_data = dp.df[0:10000]
-#     selected_output_data = dp.outputs_df[0:10000]
-#     X_train, X_test, y_train, y_test = train_test_split(
-#        selected_data[features], selected_output_data[target_colums], test_size=test_size, random_state=random_state
-#     )
-
-#     # 2. 训练随机森林
-#     print("训练 RandomForest...")
-#     rf = RandomForestRegressor(n_estimators=100, random_state=random_state)
-#     rf.fit(X_train, y_train.values.ravel())
-
-#    # Gets feature importances from RF, sorts features from most to least important. Keeps 4 * top_num of them
-#     importances = rf.feature_importances_
-#     feature_importance_series = pd.Series(importances, index=X_train.columns)
-#     top_features = feature_importance_series.sort_values(ascending=False).head(4*top_num).index.tolist()
-
-#     X_sub = X_train[top_features]
-#     y_sub = y_train
-#     print("训练 simple RandomForest...")
-#     rf_small = RandomForestRegressor(n_estimators=100, random_state=random_state)
-#     rf_small.fit(X_sub, y_sub.values.ravel())
-#     explainer = shap.TreeExplainer(rf_small)
-#     X_sub_sample = X_sub.sample(n=200, random_state=42)
-#     shap_values = explainer.shap_values(X_sub_sample)
-
-#     # 3. 计算 SHAP 重要性
-#     shap_importance = pd.Series(np.abs(shap_values).mean(axis=0), index=X_sub.columns)
-#     top_k_features = shap_importance.sort_values(ascending=False).head(top_num*2).index.tolist()
-
-#     shap.summary_plot(shap_values, X_sub_sample, feature_names=X_sub.columns, max_display=top_num*2)
-
-#     import_features = pd.DataFrame(top_k_features)
-#     import_data = dp.df[top_k_features]
-#     import_data.to_csv(f"../data/processed/top_k_features_data_{plant_name}_{target_colums}.csv")
-#     import_features.to_csv(f"../data/processed/top_k_features_{plant_name}_{target_colums}.csv")
-#     return top_k_features
+import os
+import time
+import pandas as pd
+import numpy as np
+import shap
+import matplotlib.pyplot as plt
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestRegressor
+from tqdm.auto import tqdm
 
 
+def random_forest_regressor(
+    dp,
+    target_colums,
+    features,
+    plant_name,
+    test_size=0.2,
+    random_state=42,
+    top_num=5,
+    max_rows=10000,
+    n_estimators=200,
+    rf_chunk=25,
+    shap_rows=400,
+    shap_batch=50
+):
+    """
+    Performs feature selection using Random Forest Regressor and SHAP values.
 
-# ################## OLD CODE #####################
+    Args:
+        dp: DataProcessor object
+        target_colums: Target column name
+        features: List of feature column names
+        plant_name: Name of the plant (for file naming)
+        test_size: Test set fraction
+        random_state: Random seed
+        top_num: Number of top features to select
+        max_rows: Maximum rows to use for training
+        n_estimators: Number of trees in forest
+        rf_chunk: Trees per progress update
+        shap_rows: Rows to use for SHAP calculation
+        shap_batch: Batch size for SHAP calculation
 
-# import pandas as pd
-# import numpy as np
-# from sklearn.model_selection import train_test_split
-# from sklearn.ensemble import RandomForestRegressor
-# import shap
-# import torch
-# import torch.nn as nn
-# from torch.utils.data import DataLoader, Dataset
-# from sklearn.preprocessing import StandardScaler
-# from tqdm import tqdm
-# import matplotlib.pyplot as plt
-# from data_processor import DataProcessor
-# from tqdm import tqdm
+    Returns:
+        List of top-k selected features
+    """
+    steps = [
+        "Data Splitting & Sampling",
+        "Training Full RandomForest (tree progress)",
+        "Feature Selection (Top 4×K)",
+        "Training Refined RF Model (tree progress)",
+        "Calculating SHAP Values (row progress)",
+        "Saving Files & Plotting"
+    ]
 
-# def random_forest_regressor(dp: DataProcessor, target_colums, features, plant_name,test_size=0.2, random_state=42, top_num = 5):
-#     # 1. 数据拆分
-#     features = [f for f in features if f not in ['cycle_id', 'cycle_time']]
-#     # 选出前10000个数据
-#     selected_data = dp.df[0:10000]
-#     X_train, X_test, y_train, y_test = train_test_split(
-#        selected_data[features], selected_data[target_colums], test_size=test_size, random_state=random_state
-#     )
+    features = [f for f in features if f not in ["cycle_id", "cycle_time"]]
 
-#     # 2. 训练随机森林
-#     print("Training RandomForest...")
-#     rf = RandomForestRegressor(n_estimators=100, random_state=random_state)
-#     rf.fit(X_train, y_train.values.ravel())
+    with tqdm(total=len(steps), desc="Processing", colour="grey") as pbar:
+        t0 = time.time()
 
-#     importances = rf.feature_importances_
-#     feature_importance_series = pd.Series(importances, index=X_train.columns)
-#     top_features = feature_importance_series.sort_values(ascending=False).head(4*top_num).index.tolist()
+        # Step 1: Data Splitting & Sampling
+        pbar.set_description(f"Processing: {steps[0]}")
 
-#     X_sub = X_train[top_features]
-#     y_sub = y_train
-#     print("训 simple RandomForest...")
-#     rf_small = RandomForestRegressor(n_estimators=100, random_state=random_state)
-#     rf_small.fit(X_sub, y_sub.values.ravel())
-#     explainer = shap.TreeExplainer(rf_small)
-#     X_sub_sample = X_sub.sample(n=200, random_state=42)
-#     shap_values = explainer.shap_values(X_sub_sample)
+        all_cols = features + [target_colums]
+        df = dp.df[all_cols].dropna()
 
-#     # 3. 计算 SHAP 重要性
-#     shap_importance = pd.Series(np.abs(shap_values).mean(axis=0), index=X_sub.columns)
-#     top_k_features = shap_importance.sort_values(ascending=False).head(top_num).index.tolist()
+        if len(df) > max_rows:
+            selected_data = df.sample(n=max_rows, random_state=random_state)
+            pbar.write(f"Sampled {max_rows} rows from {len(df)} total.")
+        else:
+            selected_data = df
+            pbar.write(f"Using {len(df)} rows (no sampling).")
 
-#     shap.summary_plot(shap_values, X_sub_sample, feature_names=X_sub.columns, max_display=top_num*2)
+        X_train, X_test, y_train, y_test = train_test_split(
+            selected_data[features],
+            selected_data[target_colums],
+            test_size=test_size,
+            random_state=random_state,
+            shuffle=True
+        )
 
-#     import_features = pd.DataFrame(top_k_features)
-#     import_data = dp.df[top_k_features]
-#     import_data.to_csv(f"../data/physics/top_k_features_data_{plant_name}_{target_colums}.csv")
-#     import_features.to_csv(f"../data/physics/top_k_features_{plant_name}_{target_colums}.csv")
-#     return top_k_features
+        pbar.write(f"✅ {steps[0]} Complete | Train={len(X_train)}, Test={len(X_test)}")
+        pbar.update(1)
+
+        # Step 2: Training Full RandomForest
+        pbar.set_description(f"Processing: {steps[1]}")
+
+        rf = RandomForestRegressor(
+            n_estimators=0,
+            warm_start=True,
+            random_state=random_state,
+            n_jobs=-1
+        )
+
+        built = 0
+        with tqdm(total=n_estimators, desc="Full RF: trees", leave=False) as t_rf:
+            while built < n_estimators:
+                nxt = min(built + rf_chunk, n_estimators)
+                rf.set_params(n_estimators=nxt)
+                rf.fit(X_train, y_train.values.ravel())
+                t_rf.update(nxt - built)
+                built = nxt
+
+        pbar.write(f"✅ {steps[1]} Complete | Trees={n_estimators}")
+        pbar.update(1)
+
+        # Step 3: Feature Selection
+        pbar.set_description(f"Processing: {steps[2]}")
+
+        importances = rf.feature_importances_
+        fi = pd.Series(importances, index=X_train.columns).sort_values(ascending=False)
+        top_features = fi.head(4 * top_num).index.tolist()
+
+        pbar.write(f"✅ {steps[2]} Complete | Selected={len(top_features)}")
+        pbar.update(1)
+
+        # Step 4: Training Refined RF Model
+        pbar.set_description(f"Processing: {steps[3]}")
+
+        X_sub = X_train[top_features]
+        y_sub = y_train
+
+        rf_small = RandomForestRegressor(
+            n_estimators=0,
+            warm_start=True,
+            random_state=random_state,
+            n_jobs=-1
+        )
+
+        built = 0
+        with tqdm(total=n_estimators, desc="Refined RF: trees", leave=False) as t_rf2:
+            while built < n_estimators:
+                nxt = min(built + rf_chunk, n_estimators)
+                rf_small.set_params(n_estimators=nxt)
+                rf_small.fit(X_sub, y_sub.values.ravel())
+                t_rf2.update(nxt - built)
+                built = nxt
+
+        pbar.write(f"✅ {steps[3]} Complete | Trees={n_estimators}")
+        pbar.update(1)
+
+        # Step 5: Calculating SHAP Values
+        pbar.set_description(f"Processing: {steps[4]}")
+
+        explainer = shap.TreeExplainer(rf_small)
+
+        n_shap = min(shap_rows, len(X_sub))
+        X_sub_sample = X_sub.sample(n=n_shap, random_state=random_state)
+
+        shap_chunks = []
+        with tqdm(total=n_shap, desc="SHAP: rows", leave=False) as t_shap:
+            for start in range(0, n_shap, shap_batch):
+                end = min(start + shap_batch, n_shap)
+                batch = X_sub_sample.iloc[start:end]
+                shap_vals_batch = explainer.shap_values(batch)
+                shap_chunks.append(shap_vals_batch)
+                t_shap.update(end - start)
+
+        shap_values = np.vstack(shap_chunks)
+
+        shap_importance = pd.Series(np.abs(shap_values).mean(axis=0), index=X_sub.columns)
+        top_k_features = shap_importance.sort_values(ascending=False).head(top_num).index.tolist()
+
+        pbar.write(f"✅ {steps[4]} Complete | Top-{top_num}: {top_k_features}")
+        pbar.update(1)
+
+        # Step 6: Saving Files & Plotting
+        pbar.set_description(f"Processing: {steps[5]}")
+
+        os.makedirs("../data/physics/", exist_ok=True)
+
+        plt.figure(figsize=(8, 5))
+        shap.summary_plot(shap_values, X_sub_sample, feature_names=X_sub.columns, max_display=top_num, show=False)
+        plt.title(f"Top Features Influencing {target_colums}")
+        plt.tight_layout()
+        plt.savefig(f"../data/physics/top_features_{plant_name}_{target_colums}.png", dpi=300)
+
+        pd.DataFrame(top_k_features, columns=["feature_name"]).to_csv(
+            f"../data/physics/top_k_features_{plant_name}_{target_colums}.csv", index=False
+        )
+        dp.df[top_k_features].to_csv(
+            f"../data/physics/top_k_features_data_{plant_name}_{target_colums}.csv", index=False
+        )
+
+        pbar.write(f"✅ {steps[5]} Complete | Saved CSV + PNG")
+        pbar.update(1)
+
+        pbar.set_description(f"All Tasks Finished ({time.time() - t0:.1f}s)")
+
+    return top_k_features

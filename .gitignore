@@ -8,6 +8,7 @@ __pycache__/
 *.pyd
 env/
 venv/
+.venv-1/
 
 data/
 /models/
@@ -16,3 +17,8 @@ reports/
 
 /.DS_Store
 
+# Notebooks
+notebook/draft/
+notebook/.ipynb_checkpoints/
+
+note.txt
