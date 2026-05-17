@@ -170,19 +170,19 @@ def random_forest_regressor(
         # Step 6: Saving Files & Plotting
         pbar.set_description(f"Processing: {steps[5]}")
 
-        os.makedirs("../data/physics/", exist_ok=True)
+        os.makedirs("../data/sads/", exist_ok=True)
 
         plt.figure(figsize=(8, 5))
         shap.summary_plot(shap_values, X_sub_sample, feature_names=X_sub.columns, max_display=top_num, show=False)
         plt.title(f"Top Features Influencing {target_colums}")
         plt.tight_layout()
-        plt.savefig(f"../data/physics/top_features_{plant_name}_{target_colums}.png", dpi=300)
+        plt.savefig(f"../data/sads/top_features_{plant_name}_{target_colums}.png", dpi=300)
 
         pd.DataFrame(top_k_features, columns=["feature_name"]).to_csv(
-            f"../data/physics/top_k_features_{plant_name}_{target_colums}.csv", index=False
+            f"../data/sads/top_k_features_{plant_name}_{target_colums}.csv", index=False
         )
         dp.df[top_k_features].to_csv(
-            f"../data/physics/top_k_features_data_{plant_name}_{target_colums}.csv", index=False
+            f"../data/sads/top_k_features_data_{plant_name}_{target_colums}.csv", index=False
         )
 
         pbar.write(f"✅ {steps[5]} Complete | Saved CSV + PNG")
@@ -190,4 +190,4 @@ def random_forest_regressor(
 
         pbar.set_description(f"All Tasks Finished ({time.time() - t0:.1f}s)")
 
-    return top_k_features
+    return top_k_features, top_features, fi

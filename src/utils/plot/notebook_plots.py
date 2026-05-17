@@ -30,7 +30,17 @@ export_config = {
 
 
 def get_unit(target_col):
-    """Auto-detect unit based on column name ending patterns."""
+    """Auto-detect unit based on column name ending patterns.
+    
+    Skips cross-features like FeedFlow_x_FeedPressure to avoid
+    assigning units to pairwise interaction terms.
+    """
+    # ── Skip cross/interaction features ────────────────────────────────────
+    CROSS_JOINERS = ['_x_']
+    if any(joiner in target_col for joiner in CROSS_JOINERS):
+        return ''
+    # ───────────────────────────────────────────────────────────────────────
+    
     UNIT_PATTERNS = [
         (r'Flow$', 'm<sup>3</sup>/h'),
         (r'Pressure$', 'psi'),
@@ -51,7 +61,6 @@ def format_yaxis_label(target_col):
     """Format column name with its unit for axis labels."""
     unit = get_unit(target_col)
     return f"{target_col} ({unit})" if unit else target_col
-
 
 def plot_interactive_features(df, features, time_col='timestamp', title=None, 
                               separate_graphs=False, height=None, show_rangeslider=True, show_rangeselector=True):
@@ -185,12 +194,16 @@ def plot_interactive_features(df, features, time_col='timestamp', title=None,
                 yanchor="bottom",
                 y=1.02,
                 xanchor="right",
-                x=1
+                x=1,
+                font=dict(size=16), 
             ),
 
             yaxis=dict(
                 autorange=True,
-                fixedrange=False
+                fixedrange=False,
+                # --- BIGGER X-AXIS FONTS ---
+                tickfont=dict(size=16),           # tick labels
+                title=dict(font=dict(size=18))    # axis title
             ),
 
             xaxis=dict(
@@ -205,22 +218,12 @@ def plot_interactive_features(df, features, time_col='timestamp', title=None,
                         dict(step="all", label="All")
                     ])
                 ),
-                type="date"
+                type="date",
+                # --- BIGGER X-AXIS FONTS ---
+                tickfont=dict(size=16),           # tick labels
+                title=dict(font=dict(size=18))    # axis title
             )
         )
-
-        # Define high-resolution download settings
-        export_config = {
-            'responsive': True,
-            'scrollZoom': True,
-            'toImageButtonOptions': {
-                'format': 'png',
-                'filename': 'feature_plot',
-                # 'height': 1080,
-                # 'width': 1920,
-                'scale': 3
-            }
-        }
 
         fig.show(config=export_config)
         return
@@ -499,12 +502,20 @@ def plot_cycle(df, target_col, show_rangeslider=True, show_rangeselector=True, s
                 ])
             ),
             rangeslider=dict(visible=show_rangeslider),
-            type="date"
+            type="date",
+            # --- BIGGER X-AXIS FONTS ---
+            tickfont=dict(size=16),           # tick labels
+            title=dict(font=dict(size=18))    # axis title
         ),
         yaxis=dict(
             autorange=True,
-            fixedrange=False   # allows y-axis zoom/pan as well
-        )
+            fixedrange=False,
+            # --- BIGGER Y-AXIS FONTS ---
+            tickfont=dict(size=16),           # tick labels
+            title=dict(font=dict(size=18))    # axis title
+        ),
+        # Optional: make the chart title bigger too
+        title=dict(font=dict(size=20))
     )
     fig.show(config=export_config)
     

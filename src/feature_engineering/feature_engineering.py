@@ -592,6 +592,98 @@ class PhysicsBasedFeatures:
         # return dP_pred, (best_k, best_alpha, best_beta, best_c)
         return self.df
 
+
+    def predict_differential_pressure_physics_V5(self, 
+                                            feed_flow_col='FeedFlow', 
+                                            temp_col='FeedTemperature', 
+                                            feed_cond_col='FeedConductivity',
+                                            target_col='DifferentialPressure'):
+        """
+        Physics-based model for Differential Pressure:
+        
+        dP = k * Q^β * exp[2640 * (1/298 - 1/(273 + T_C))] + γ * C_feed
+        
+        Where:
+            Q      = Feed Flow rate
+            T_C    = Feed Temperature (°C)
+            C_feed = Feed Conductivity
+            γ      = Conductivity coefficient (additive osmotic/fouling contribution)
+        """
+        print(f"--- Physics Model for {target_col} ---")
+
+        # Get calibration data
+        calib_df = self._get_calib_data(min_rows=100, fallback_rows=1000).dropna()
+        calib_df = calib_df[calib_df[feed_flow_col] > 1]
+
+        Q = calib_df[feed_flow_col].values
+        T_F = calib_df[temp_col].values
+        C_feed = calib_df[feed_cond_col].values
+        y_true = calib_df[target_col].values
+
+        T_C = (T_F - 32) * 5/9
+        # Temperature in Kelvin for Arrhenius term
+        T_K = T_C + 273.15
+        T_ref = 298.15
+
+        def physics_equation(X, k, beta, gamma):
+            Q_in, T_in, C_in = X
+            
+            # Flow term: k * Q^β
+            flow_term = k * (Q_in ** beta)
+            
+            # Arrhenius temperature term: exp[2640 * (1/T_ref - 1/T_K)]
+            A = 2640.0
+            temp_term = np.exp(A * (1/T_ref - 1/T_in))
+            
+            # Conductivity term: γ * C_feed (additive)
+            cond_term = gamma * C_in
+            
+            return flow_term * temp_term + cond_term
+
+        # Initial guesses [k, beta, gamma]
+        p0 = [0.01, 1.8, 0.5]
+        bounds = (
+            [0.0, 0.5, -10.0],      # Lower bounds
+            [np.inf, 3.0, 10.0]     # Upper bounds
+        )
+
+        try:
+            popt, pcov = curve_fit(
+                physics_equation,
+                (Q, T_K, C_feed),
+                y_true,
+                p0=p0,
+                bounds=bounds,
+                maxfev=10000
+            )
+            best_k, best_beta, best_gamma = popt
+
+            print(f"✅ Optimization Success!")
+            print(f"   k (Scale):          {best_k:.6f}")
+            print(f"   β (Flow Exponent):  {best_beta:.5f}")
+            print(f"   γ (Cond. Coeff):    {best_gamma:.6f}")
+
+        except Exception as e:
+            print(f"⚠️ Optimization failed: {e}")
+            best_k, best_beta, best_gamma = 0.01, 1.7, 0.5
+
+        # Predict on full dataset
+        Q_all = self.df[feed_flow_col].values
+        T_C_all = self.df[temp_col].values
+        C_feed_all = self.df[feed_cond_col].values
+        
+        T_K_all = T_C_all + 273.15
+        A = 2640.0
+        
+        flow_term_all = best_k * (Q_all ** best_beta)
+        temp_term_all = np.exp(A * (1/T_ref - 1/T_K_all))
+        cond_term_all = best_gamma * C_feed_all
+        
+        y_pred = flow_term_all * temp_term_all + cond_term_all
+        self.df[f'Physics_{target_col}_V5'] = y_pred
+
+        return self.df
+
 #----------------------------------- Permeate Conductivity ------------------------------------------------
     def predict_permeate_conductivity_physics(self,
                                               perm_flow_col='PermeateFlow',

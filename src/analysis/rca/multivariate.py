@@ -287,6 +287,201 @@ def plot_dynamic_multivariate_anomalies(df, target_col, feature_cols, time_col='
 
     return df
 
+# def fast_anomaly_detection_system(df, target_col, feature_cols, time_col='timestamp',
+#                                    smoothing_window=1, sigma=3, train_frac=0.3,
+#                                    directional=False, cycle_col='cycle_id',
+#                                    cycle_buffer=5):
+#     """
+#     ...
+#     Args:
+#         cycle_col:     Column name for cycle ID. Set to None to disable masking.
+#         cycle_buffer:  Number of timestamps to suppress anomaly detection at
+#                        the start and end of each cycle (transition dead zone).
+#     """
+#     print(f"--- Dynamic Fast System Anomaly Detection for {target_col} ---")
+#     print(f"Features: {', '.join(feature_cols)}")
+
+#     df = df.copy()
+#     df[time_col] = pd.to_datetime(df[time_col])
+#     df = df.sort_values(by=time_col)
+
+#     dt_hours = df[time_col].diff().dt.total_seconds() / 3600.0
+#     dt_hours = dt_hours.replace(0, 0.0001)
+
+#     df['d_target'] = (df[target_col].diff() / dt_hours).rolling(window=smoothing_window, min_periods=1).mean()
+
+#     d_feature_names = []
+#     for col in feature_cols:
+#         d_col_name = f'd_{col}'
+#         df[d_col_name] = (df[col].diff() / dt_hours).rolling(window=smoothing_window, min_periods=1).mean()
+#         d_feature_names.append(d_col_name)
+
+#     plot_df = df.dropna(subset=['d_target'] + d_feature_names).copy()
+
+#     # ── Build cycle boundary mask ─────────────────────────────────────────────
+#     plot_df['_in_buffer'] = False
+#     if cycle_col and cycle_col in plot_df.columns and cycle_buffer > 0:
+#         for _, group in plot_df.groupby(cycle_col):
+#             if len(group) <= cycle_buffer * 2:
+#                 # Entire cycle is within buffer — mask it all
+#                 plot_df.loc[group.index, '_in_buffer'] = True
+#             else:
+#                 head_idx = group.index[:cycle_buffer]
+#                 tail_idx = group.index[-cycle_buffer:]
+#                 plot_df.loc[head_idx, '_in_buffer'] = True
+#                 plot_df.loc[tail_idx, '_in_buffer'] = True
+#         n_masked = plot_df['_in_buffer'].sum()
+#         print(f"🔇 Cycle buffer active: masking {n_masked} boundary timestamps "
+#               f"(±{cycle_buffer} pts per cycle) from anomaly detection.")
+#     # ─────────────────────────────────────────────────────────────────────────
+
+#     # Train only on baseline (first train_frac of data)
+#     n_train = max(10, int(len(plot_df) * train_frac))
+#     train_df = plot_df.iloc[:n_train]
+
+#     lr_model = LinearRegression()
+#     X_all = train_df[d_feature_names].values
+#     y_actual = train_df['d_target'].values
+
+#     if len(X_all) == 0:
+#         print("Warning: Not enough data to fit the model.")
+#         return df
+
+#     lr_model.fit(X_all, y_actual)
+#     plot_df['predicted_d_target'] = lr_model.predict(plot_df[d_feature_names].values)
+#     r2 = lr_model.score(X_all, y_actual)
+
+#     train_df = train_df.copy()
+#     train_df['predicted_d_target'] = lr_model.predict(train_df[d_feature_names].values)
+#     train_residuals = train_df['d_target'] - train_df['predicted_d_target']
+#     mean_res = train_residuals.mean()
+#     std_res  = train_residuals.std()
+#     threshold = mean_res + sigma * std_res
+
+#     plot_df['residual'] = plot_df['d_target'] - plot_df['predicted_d_target']
+#     plot_df['error']    = plot_df['residual'].abs()
+
+#     if directional:
+#         plot_df['Dynamic_Anomaly'] = (plot_df['residual'] > threshold).astype(int)
+#     else:
+#         plot_df['Dynamic_Anomaly'] = (plot_df['residual'].abs() > abs(threshold)).astype(int)
+
+#     # ── Suppress anomalies inside the buffer zone ─────────────────────────────
+#     plot_df.loc[plot_df['_in_buffer'], 'Dynamic_Anomaly'] = 0
+#     # ─────────────────────────────────────────────────────────────────────────
+
+#     normal_df = plot_df[plot_df['Dynamic_Anomaly'] == 0]
+#     anom_df   = plot_df[plot_df['Dynamic_Anomaly'] == 1]
+#     buffer_df = plot_df[plot_df['_in_buffer']]          # for visualization
+
+#     print(f"Automatically detected {len(anom_df)} anomalies out of {len(plot_df)} points "
+#           f"({len(buffer_df)} buffer pts excluded).")
+
+#     all_x = plot_df['predicted_d_target']
+#     all_y = plot_df['d_target']
+#     min_val = min(all_x.min(), all_y.min())
+#     max_val = max(all_x.max(), all_y.max())
+#     pad = (max_val - min_val) * 0.05
+#     axis_min = min_val - pad
+#     axis_max = max_val + pad
+#     line_x = [axis_min, axis_max]
+
+#     fig = go.Figure()
+
+#     fig.add_trace(go.Scatter(
+#         x=normal_df['predicted_d_target'], y=normal_df['d_target'],
+#         mode='markers', name='Normal',
+#         marker=dict(color='rgba(100, 100, 100, 0.4)', size=5),
+#         text=normal_df[time_col].dt.strftime('%Y-%m-%d %H:%M:%S'),
+#         hovertemplate="<b>Time: %{text}</b><br>Predicted: %{x:.2f}<br>Actual: %{y:.2f}<br>Error: %{customdata:.2f}<extra></extra>",
+#         customdata=normal_df['error']
+#     ))
+
+#     # ── Buffer zone points shown distinctly ───────────────────────────────────
+#     if not buffer_df.empty:
+#         fig.add_trace(go.Scatter(
+#             x=buffer_df['predicted_d_target'], y=buffer_df['d_target'],
+#             mode='markers', name=f'Cycle Buffer (±{cycle_buffer} pts)',
+#             marker=dict(color='rgba(180, 180, 255, 0.5)', size=5, symbol='diamond'),
+#             text=buffer_df[time_col].dt.strftime('%Y-%m-%d %H:%M:%S'),
+#             hovertemplate="<b>Buffer Zone</b><br>Time: %{text}<br>Predicted: %{x:.2f}<br>Actual: %{y:.2f}<extra></extra>",
+#         ))
+#     # ─────────────────────────────────────────────────────────────────────────
+
+#     fig.add_trace(go.Scatter(
+#         x=line_x, y=line_x,
+#         mode='lines', name=f'Ideal Fit (R²={r2:.3f})',
+#         line=dict(color='green', width=2, dash='dash')
+#     ))
+#     fig.add_trace(go.Scatter(
+#         x=line_x, y=[v + threshold for v in line_x],
+#         mode='lines', name=f'Upper Limit (+{threshold:.1f})',
+#         line=dict(color='red', width=1.5, dash='dash')
+#     ))
+#     fig.add_trace(go.Scatter(
+#         x=line_x, y=[v - threshold for v in line_x],
+#         mode='lines', name=f'Lower Limit (-{threshold:.1f})',
+#         line=dict(color='red', width=1.5, dash='dash')
+#     ))
+
+#     if not anom_df.empty:
+#         fig.add_trace(go.Scatter(
+#             x=anom_df['predicted_d_target'], y=anom_df['d_target'],
+#             mode='markers', name='Anomaly',
+#             marker=dict(color='yellow', size=10, line=dict(color='red', width=2)),
+#             text=anom_df[time_col].dt.strftime('%Y-%m-%d %H:%M:%S'),
+#             hovertemplate="<b>ANOMALY</b><br>Time: %{text}<br>Predicted: %{x:.2f}<br>Actual: %{y:.2f}<br>Error: %{customdata:.2f}<extra></extra>",
+#             customdata=anom_df['error']
+#         ))
+
+#     fig.update_layout(
+#         title=dict(
+#             text=(
+#                 f"Dynamic Anomaly Detection: {target_col}<br>"
+#                 f"<sup>Flagging points outside the {sigma}-Sigma Safe Zone "
+#                 f"| Cycle buffer: ±{cycle_buffer} pts</sup>"
+#             ),
+#             x=0.5, xanchor='center'
+#         ),
+#         xaxis_title="PREDICTED Rate of Change (Δ/hr)",
+#         yaxis_title="ACTUAL Rate of Change (Δ/hr)",
+#         template="plotly_white",
+#         height=700,
+#         hovermode="closest",
+#         annotations=[
+#             dict(
+#                 text=f"Total Anomalies Detected: {len(anom_df)}  |  Buffer pts suppressed: {len(buffer_df)}",
+#                 xref="paper", yref="paper",
+#                 x=0.01, y=1.0,
+#                 showarrow=False,
+#                 font=dict(size=13, color="black"),
+#                 xanchor="left", yanchor="bottom"
+#             )
+#         ],
+#         legend=dict(
+#             yanchor="top", y=0.99, xanchor="left", x=0.01,
+#             bgcolor='rgba(255,255,255,0.85)',
+#             bordercolor='lightgrey', borderwidth=1
+#         ),
+#         xaxis=dict(range=[axis_min, axis_max], zeroline=True, zerolinecolor='lightgrey'),
+#         yaxis=dict(range=[axis_min, axis_max], zeroline=True, zerolinecolor='lightgrey'),
+#     )
+
+#     fig.show(config=export_config)
+
+#     df['Dynamic_Anomaly']    = plot_df['Dynamic_Anomaly'].reindex(df.index, fill_value=0)
+#     df['predicted_d_target'] = plot_df['predicted_d_target'].reindex(df.index)
+#     df['error']              = plot_df['error'].reindex(df.index)
+
+#     # Create a clean export dataframe with just the requested columns
+#     export_cols = [time_col, 'Dynamic_Anomaly'] + [target_col] + feature_cols
+#     # We use .intersection to ensure we don't crash if a column is missing
+#     final_export_df = df[df.columns.intersection(export_cols)]
+
+#     return df, lr_model, train_df[d_feature_names].mean(), final_export_df
+
+
+
 def fast_anomaly_detection_system(df, target_col, feature_cols, time_col='timestamp',
                                    smoothing_window=1, sigma=3, train_frac=0.3,
                                    directional=False, cycle_col='cycle_id',
@@ -441,13 +636,36 @@ def fast_anomaly_detection_system(df, target_col, feature_cols, time_col='timest
                 f"<sup>Flagging points outside the {sigma}-Sigma Safe Zone "
                 f"| Cycle buffer: ±{cycle_buffer} pts</sup>"
             ),
-            x=0.5, xanchor='center'
+            x=0.5, xanchor='center',
+            font=dict(size=22)  # ← Larger title font
         ),
         xaxis_title="PREDICTED Rate of Change (Δ/hr)",
         yaxis_title="ACTUAL Rate of Change (Δ/hr)",
         template="plotly_white",
         height=700,
         hovermode="closest",
+        # ── ENLARGED AXIS TEXT ───────────────────────────────────────────────
+        xaxis=dict(
+            range=[axis_min, axis_max],
+            zeroline=True,
+            zerolinecolor='lightgrey',
+            title=dict(
+                text="PREDICTED Rate of Change (Δ/hr)",
+                font=dict(size=18)  # ← Larger x-axis title
+            ),
+            tickfont=dict(size=14)  # ← Larger x-axis tick labels
+        ),
+        yaxis=dict(
+            range=[axis_min, axis_max],
+            zeroline=True,
+            zerolinecolor='lightgrey',
+            title=dict(
+                text="ACTUAL Rate of Change (Δ/hr)",
+                font=dict(size=18)  # ← Larger y-axis title
+            ),
+            tickfont=dict(size=14)  # ← Larger y-axis tick labels
+        ),
+        # ─────────────────────────────────────────────────────────────────────
         annotations=[
             dict(
                 text=f"Total Anomalies Detected: {len(anom_df)}  |  Buffer pts suppressed: {len(buffer_df)}",
@@ -461,10 +679,9 @@ def fast_anomaly_detection_system(df, target_col, feature_cols, time_col='timest
         legend=dict(
             yanchor="top", y=0.99, xanchor="left", x=0.01,
             bgcolor='rgba(255,255,255,0.85)',
-            bordercolor='lightgrey', borderwidth=1
+            bordercolor='lightgrey', borderwidth=1,
+            font=dict(size=14)  # ← Larger legend text
         ),
-        xaxis=dict(range=[axis_min, axis_max], zeroline=True, zerolinecolor='lightgrey'),
-        yaxis=dict(range=[axis_min, axis_max], zeroline=True, zerolinecolor='lightgrey'),
     )
 
     fig.show(config=export_config)

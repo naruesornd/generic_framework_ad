@@ -1,11 +1,10 @@
 import pandas as pd
+import numpy as np
 
 # =============================================
 #             Cycle Analysis
 # =============================================
 
-import pandas as pd
-import numpy as np
 
 class CycleProcessor:
     def __init__(self, column_name, df, min_cycle_length=70, threshold=0.05):
