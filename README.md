@@ -80,7 +80,7 @@ Dataset from Plant
       ├──────────────────┬──────────────────┐
       ▼                  ▼
 6. SADS                 7. FADS
-   Physics Model           Gradient-Based Model
+   Physics Model           Derivative-Based Model
    + LSTM Residuals         (dy/dt features, Linear Regression + 3σ threshold)
       │                  │
       └──────────────────┘
