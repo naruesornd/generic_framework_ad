@@ -202,8 +202,8 @@ def plot_interactive_features(df, features, time_col='timestamp', title=None,
                 autorange=True,
                 fixedrange=False,
                 # --- BIGGER X-AXIS FONTS ---
-                tickfont=dict(size=16),           # tick labels
-                title=dict(font=dict(size=18))    # axis title
+                tickfont=dict(size=22),           # tick labels
+                title=dict(font=dict(size=24))    # axis title
             ),
 
             xaxis=dict(
@@ -220,8 +220,8 @@ def plot_interactive_features(df, features, time_col='timestamp', title=None,
                 ),
                 type="date",
                 # --- BIGGER X-AXIS FONTS ---
-                tickfont=dict(size=16),           # tick labels
-                title=dict(font=dict(size=18))    # axis title
+                tickfont=dict(size=22),           # tick labels
+                title=dict(font=dict(size=24))    # axis title
             )
         )
 
