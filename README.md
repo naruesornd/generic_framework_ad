@@ -2,7 +2,7 @@
 
 > Naruesorn Dechnorachai and Anjan K. Tula  
 > College of Control Science and Engineering, Zhejiang University, Hangzhou, China  
-> *Under review — Transactions of the Institute of Measurement and Control (SAGE)*
+> 
 
 ---
 
