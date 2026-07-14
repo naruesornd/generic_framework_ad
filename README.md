@@ -8,7 +8,7 @@
 
 ## Overview
 
-This repository contains the full implementation, dataset, and supplementary materials for the paper above. The framework addresses six challenges in industrial anomaly detection — poor generalization, insufficient interpretability, multi-timescale anomalies, label scarcity, lack of physics–data fusion, and inadequate cyclic process handling — through a six-step modular pipeline.
+This repository contains the full implementation, dataset, and supplementary materials for the paper above. The framework addresses six challenges in industrial anomaly detection: poor generalization, insufficient interpretability, multi-timescale anomalies, label scarcity, lack of physics–data fusion, and inadequate cyclic process handling, through a six-step modular pipeline.
 
 The framework operates through a dual-path detection architecture:
 
@@ -178,27 +178,10 @@ rca_results = run_automated_rca_sads(dp, feature_name='DifferentialPressure', ..
 
 ## Data Availability
 
-The complete dataset (anonymised), trained model weights, derived feature sets, and evaluation outputs are publicly available in this repository under `data/`. The dataset may be used for academic and non-commercial purposes under the repository licence.
+The complete datasets are publicly available in this repository under `data/`. The dataset may be used for academic and non-commercial purposes under the repository licence.
 
-> The raw dataset has been anonymised: timestamps shifted by −329 days and 1% Gaussian noise added to all process variables. Statistical properties, cycle structure, and anomaly patterns are preserved.
 
 ---
-
-## Citation
-
-If you use this framework or dataset in your research, please cite:
-
-```bibtex
-@article{dechnorachai2025generic,
-  title   = {A Generic Framework for Multivariate Anomaly Detection and Root 
-             Cause Analysis Using Slow and Fast Detection in Process Industries},
-  author  = {Dechnorachai, Naruesorn and Tula, Anjan K.},
-  journal = {Transactions of the Institute of Measurement and Control},
-  year    = {2025},
-  note    = {Under review}
-}
-```
-
 ---
 
 ## Licence
