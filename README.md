@@ -101,33 +101,34 @@ Step 6: Root Cause Analysis (RCA)
 
 ## Repository Structure
 ├── data/
-│   ├── raw/                        # Raw SCADA dataset (anonymised)
+│   ├── raw/                        # Raw SCADA dataset
 │   └── processed/                  # Preprocessed datasets (1-hour and 5-minute)
+│
 ├── src/
 │   ├── data_processor/
 │   │   ├── data_processor.py       # Data loading, variable partitioning, preprocessing
 │   │   └── cycle_processor.py      # Operational cycle detection and segmentation
+│   │   
 │   ├── feature_engineering/
 │   │   └── feature_engineering.py  # Lag, cross features, physics-derived features
+│   │   
 │   ├── model/
-│   │   ├── feature_selection/
+│   │   ├── coarse_feature_selection/
 │   │   │   └── cfs.py              # RF + SHAP two-stage feature selection
-│   │   ├── mylstm.py               # LSTM with additive attention architecture
-│   │   └── physics/
-│   │       └── physics_models.py   # RO-specific physics equations
+│   │   └── lstm_model/             # LSTM with additive attention architecture
+│   │      └── enhanced_lstm.py 
+│   │       
 │   ├── detection/
 │   │   ├── sads.py                 # SADS: hybrid prediction and anomaly flagging
 │   │   └── fads.py                 # FADS: derivative-domain detection
 │   └── rca/
 │       └── rca.py                  # SADS-RCA and FADS-RCA modules
+│   
 ├── notebooks/
-│   ├── 01_preprocessing.ipynb      # Data loading, cycle analysis, preprocessing
-│   ├── 02_feature_engineering.ipynb
-│   ├── 03_sads.ipynb               # Physics models, LSTM training, SADS results
-│   ├── 04_fads.ipynb               # FADS results
-│   ├── 05_rca.ipynb                # RCA dashboards
-│   └── 06_evaluation.ipynb         # Synthetic anomaly injection evaluation
-├── supplementary/                  # Supplementary figures (Figures S1–S8)
+│   ├── 01_exploration.ipynb        # Data loading, cycle analysis, preprocessing
+│   ├── 02_SADS.ipynb               # Physics models, LSTM training, SADS results, its synthetic anomaly injection results
+│   ├── 03_FADS.ipynb               # FADS results and its synthetic anomaly injection results
+│   
 ├── requirements.txt
 └── README.md
 
